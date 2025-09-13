@@ -1,8 +1,8 @@
+alloy/alloy.env
+frontend/package-lock.json
 node_modules
 .env
 .gradle
 airlines/opentelemetry-javaagent.jar
-.gitignore
-frontend/package-lock.json
 __pycache__/
 *.py[cod]
