@@ -2,10 +2,23 @@ from flasgger import Swagger
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from utils import get_random_int
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.trace import set_tracer_provider
 
 app = Flask(__name__)
 Swagger(app)
 CORS(app)
+
+
+# Set up OpenTelemetry tracing with console exporter
+tracer_provider = TracerProvider()
+span_processor = BatchSpanProcessor(ConsoleSpanExporter())
+tracer_provider.add_span_processor(span_processor)
+set_tracer_provider(tracer_provider)
+
+FlaskInstrumentor().instrument_app(app)
 
 @app.route('/health', methods=['GET'])
 def health():
