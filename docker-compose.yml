@@ -18,3 +18,25 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    env_file:
+      - ./alloy/alloy.env
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      GRAFANA_CLOUD_OTLP_ENDPOINT: ${GRAFANA_CLOUD_OTLP_ENDPOINT}
+      GRAFANA_CLOUD_INSTANCE_ID: ${GRAFANA_CLOUD_INSTANCE_ID}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
+    ports:
+      - "12345:12345"
+      - "4317:4317"
+      - "4318:4318"
+    command: >
+      run
+      --server.http.listen-addr=0.0.0.0:12345
+      --storage.path=/var/lib/alloy/data
+      /etc/alloy/config.alloy
+    restart: unless-stopped
