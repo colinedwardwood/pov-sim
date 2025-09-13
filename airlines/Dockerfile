@@ -18,9 +18,9 @@ WORKDIR /app
 
 # Copy the JAR file from the build stage
 COPY --from=build /app/build/libs/*.jar app.jar
-
+COPY opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 # Expose the port the application runs on
 EXPOSE 8080
 
 # Set the command to run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dotel.javaagent.debug=true", "-javaagent:/app/opentelemetry-javaagent.jar", "-jar", "app.jar"]
