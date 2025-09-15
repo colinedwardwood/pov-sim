@@ -9,6 +9,7 @@ COPY requirements.txt requirements.txt
 
 # Install the required dependencies
 RUN pip3 install -r requirements.txt
+RUN opentelemetry-bootstrap -a install
 
 # Copy the rest of your application code into the container
 COPY . .
@@ -17,4 +18,4 @@ COPY . .
 EXPOSE 5001
 
 # Specify the command to run your Flask app
-CMD ["python3", "-m", "flask", "run", "--host=0.0.0.0", "--port=5001"]
+CMD ["opentelemetry-instrument", "flask", "run", "--host=0.0.0.0", "--port=5001"]
