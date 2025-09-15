@@ -6,3 +6,4 @@ node_modules
 airlines/opentelemetry-javaagent.jar
 __pycache__/
 *.py[cod]
+airlines/grafana-opentelemetry-java.jar
