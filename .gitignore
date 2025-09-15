@@ -7,3 +7,5 @@ airlines/opentelemetry-javaagent.jar
 __pycache__/
 *.py[cod]
 airlines/grafana-opentelemetry-java.jar
+.gitignore
+alloy/settings.gradle
