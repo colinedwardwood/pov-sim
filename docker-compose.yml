@@ -1,15 +1,26 @@
+name: pov-sim
 services:
   airlines:
+    container_name: airlines
+    hostname: airlines
+    env_file:
+      - ./airlines/airlines.env
     build: 
       context: ./airlines
     ports:
       - "8080:8080"
   flights:
+    container_name: flights
+    hostname: flights
+    env_file:
+      - ./flights/flights.env
     build: 
       context: ./flights
     ports:
       - "5001:5001"
   frontend:
+    container_name: frontend
+    hostname: frontend
     build: 
       context: ./frontend
     ports:
@@ -20,6 +31,7 @@ services:
   alloy:
     image: grafana/alloy:latest
     container_name: alloy
+    hostname: alloy
     env_file:
       - ./alloy/alloy.env
     volumes:
