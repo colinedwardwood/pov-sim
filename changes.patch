@@ -1,0 +1,433 @@
+diff --git a/.gitignore b/.gitignore
+index 52f0e43..948c0fb 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,3 +1,11 @@
++alloy/alloy.env
++frontend/package-lock.json
+ node_modules
+ .env
+ .gradle
++airlines/opentelemetry-javaagent.jar
++__pycache__/
++*.py[cod]
++airlines/grafana-opentelemetry-java.jar
++.gitignore
++alloy/settings.gradle
+diff --git a/airlines/Dockerfile b/airlines/Dockerfile
+index 79e8304..d91265d 100644
+--- a/airlines/Dockerfile
++++ b/airlines/Dockerfile
+@@ -18,9 +18,9 @@ WORKDIR /app
+ 
+ # Copy the JAR file from the build stage
+ COPY --from=build /app/build/libs/*.jar app.jar
+-
++COPY grafana-opentelemetry-java.jar /app/grafana-opentelemetry-java.jar
+ # Expose the port the application runs on
+ EXPOSE 8080
+ 
+ # Set the command to run the application
+-ENTRYPOINT ["java", "-jar", "app.jar"]
++ENTRYPOINT ["java", "-javaagent:/app/grafana-opentelemetry-java.jar", "-jar", "app.jar"]
+diff --git a/airlines/airlines.env b/airlines/airlines.env
+new file mode 100644
+index 0000000..2f0453c
+--- /dev/null
++++ b/airlines/airlines.env
+@@ -0,0 +1,7 @@
++OTEL_RESOURCE_ATTRIBUTES="service.name=airlines,service.namespace=pov-flight-sim,deployment.environment=dev"
++OTEL_TRACES_EXPORTER=otlp
++OTEL_METRICS_EXPORTER=otlp
++OTEL_LOGS_EXPORTER=otlp
++OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317
++OTEL_EXPORTER_OTLP_PROTOCOL=grpc
++OTEL_EXPORTER_OTLP_INSECURE=true
+\ No newline at end of file
+diff --git a/airlines/settings.gradle b/airlines/settings.gradle
+deleted file mode 100644
+index 19b5204..0000000
+--- a/airlines/settings.gradle
++++ /dev/null
+@@ -1 +0,0 @@
+-rootProject.name = 'spring-boot'
+diff --git a/alloy/config.alloy b/alloy/config.alloy
+index e69de29..2adac43 100644
+--- a/alloy/config.alloy
++++ b/alloy/config.alloy
+@@ -0,0 +1,142 @@
++logging {
++  level  = "info"
++  format = "logfmt"
++}
++
++otelcol.receiver.otlp "default" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.otlp/
++
++	// configures the default grpc endpoint "0.0.0.0:4317"
++	grpc { }
++	// configures the default http/protobuf endpoint "0.0.0.0:4318"
++	http { }
++
++	output {
++		metrics = [otelcol.processor.resourcedetection.default.input]
++		logs    = [otelcol.processor.resourcedetection.default.input]
++		traces  = [otelcol.processor.resourcedetection.default.input]
++	}
++}
++
++otelcol.processor.resourcedetection "default" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.resourcedetection/
++	detectors = ["env", "docker", "system"]
++
++	system {
++		hostname_sources = ["os"]
++	}
++
++	output {
++		metrics = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
++		logs    = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
++		traces  = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
++	}
++}
++
++otelcol.processor.transform "drop_unneeded_resource_attributes" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
++	error_mode = "ignore"
++
++	trace_statements {
++		context    = "resource"
++		statements = [
++			"delete_key(attributes, \"k8s.pod.start_time\")",
++			"delete_key(attributes, \"os.description\")",
++			"delete_key(attributes, \"os.type\")",
++			"delete_key(attributes, \"process.command_args\")",
++			"delete_key(attributes, \"process.executable.path\")",
++			"delete_key(attributes, \"process.pid\")",
++			"delete_key(attributes, \"process.runtime.description\")",
++			"delete_key(attributes, \"process.runtime.name\")",
++			"delete_key(attributes, \"process.runtime.version\")",
++		]
++	}
++
++	metric_statements {
++		context    = "resource"
++		statements = [
++			"delete_key(attributes, \"k8s.pod.start_time\")",
++			"delete_key(attributes, \"os.description\")",
++			"delete_key(attributes, \"os.type\")",
++			"delete_key(attributes, \"process.command_args\")",
++			"delete_key(attributes, \"process.executable.path\")",
++			"delete_key(attributes, \"process.pid\")",
++			"delete_key(attributes, \"process.runtime.description\")",
++			"delete_key(attributes, \"process.runtime.name\")",
++			"delete_key(attributes, \"process.runtime.version\")",
++		]
++	}
++
++	log_statements {
++		context    = "resource"
++		statements = [
++			"delete_key(attributes, \"k8s.pod.start_time\")",
++			"delete_key(attributes, \"os.description\")",
++			"delete_key(attributes, \"os.type\")",
++			"delete_key(attributes, \"process.command_args\")",
++			"delete_key(attributes, \"process.executable.path\")",
++			"delete_key(attributes, \"process.pid\")",
++			"delete_key(attributes, \"process.runtime.description\")",
++			"delete_key(attributes, \"process.runtime.name\")",
++			"delete_key(attributes, \"process.runtime.version\")",
++		]
++	}
++
++	output {
++		metrics = [otelcol.processor.transform.add_resource_attributes_as_metric_attributes.input]
++		logs    = [otelcol.processor.batch.default.input]
++		traces  = [
++			otelcol.processor.batch.default.input,
++			otelcol.connector.host_info.default.input,
++		]
++	}
++}
++
++otelcol.connector.host_info "default" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.connector.host_info/
++	host_identifiers = ["host.name"]
++
++	output {
++		metrics = [otelcol.processor.batch.default.input]
++	}
++}
++
++otelcol.processor.transform "add_resource_attributes_as_metric_attributes" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
++	error_mode = "ignore"
++
++	metric_statements {
++		context    = "datapoint"
++		statements = [
++			"set(attributes[\"deployment.environment\"], resource.attributes[\"deployment.environment\"])",
++			"set(attributes[\"service.version\"], resource.attributes[\"service.version\"])",
++		]
++	}
++
++	output {
++		metrics = [otelcol.processor.batch.default.input]
++	}
++}
++
++otelcol.processor.batch "default" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.batch/
++	output {
++		metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
++		logs    = [otelcol.exporter.otlphttp.grafana_cloud.input]
++		traces  = [otelcol.exporter.otlphttp.grafana_cloud.input]
++	}
++}
++
++otelcol.exporter.otlphttp "grafana_cloud" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlphttp/
++	client {
++		endpoint = env("GRAFANA_CLOUD_OTLP_ENDPOINT")
++		auth     = otelcol.auth.basic.grafana_cloud.handler
++	}
++}
++
++otelcol.auth.basic "grafana_cloud" {
++	// https://grafana.com/docs/alloy/latest/reference/components/otelcol.auth.basic/
++	username = env("GRAFANA_CLOUD_INSTANCE_ID")
++	password = env("GRAFANA_CLOUD_API_KEY")
++}
+\ No newline at end of file
+diff --git a/docker-compose.yml b/docker-compose.yml
+index b34d192..9d43627 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -1,16 +1,26 @@
+-version: '1'
++name: pov-sim
+ services:
+   airlines:
++    container_name: airlines
++    hostname: airlines
++    env_file:
++      - ./airlines/airlines.env
+     build: 
+       context: ./airlines
+     ports:
+       - "8080:8080"
+   flights:
++    container_name: flights
++    hostname: flights
++    env_file:
++      - ./flights/flights.env
+     build: 
+       context: ./flights
+     ports:
+       - "5001:5001"
+   frontend:
++    container_name: frontend
++    hostname: frontend
+     build: 
+       context: ./frontend
+     ports:
+@@ -18,3 +28,22 @@ services:
+     volumes:
+       - ./frontend:/app
+       - /app/node_modules
++  alloy:
++    image: grafana/alloy:latest
++    container_name: alloy
++    hostname: alloy
++    env_file:
++      - ./alloy/alloy.env
++    volumes:
++      - ./alloy/config.alloy:/etc/alloy/config.alloy
++      - /var/run/docker.sock:/var/run/docker.sock
++    ports:
++      - "12345:12345"
++      - "4317:4317"
++      - "4318:4318"
++    command: >
++      run
++      --server.http.listen-addr=0.0.0.0:12345
++      --storage.path=/var/lib/alloy/data
++      /etc/alloy/config.alloy
++    restart: unless-stopped
+diff --git a/flights/Dockerfile b/flights/Dockerfile
+index 48977d4..cba904f 100644
+--- a/flights/Dockerfile
++++ b/flights/Dockerfile
+@@ -9,6 +9,7 @@ COPY requirements.txt requirements.txt
+ 
+ # Install the required dependencies
+ RUN pip3 install -r requirements.txt
++RUN opentelemetry-bootstrap -a install
+ 
+ # Copy the rest of your application code into the container
+ COPY . .
+@@ -17,4 +18,4 @@ COPY . .
+ EXPOSE 5001
+ 
+ # Specify the command to run your Flask app
+-CMD ["python3", "-m", "flask", "run", "--host=0.0.0.0", "--port=5001"]
++CMD ["opentelemetry-instrument", "flask", "run", "--host=0.0.0.0", "--port=5001"]
+diff --git a/flights/flights.env b/flights/flights.env
+new file mode 100644
+index 0000000..2228ccc
+--- /dev/null
++++ b/flights/flights.env
+@@ -0,0 +1,7 @@
++OTEL_RESOURCE_ATTRIBUTES="service.name=flights,service.namespace=pov-flight-sim,deployment.environment=dev"
++OTEL_TRACES_EXPORTER=otlp
++OTEL_METRICS_EXPORTER=otlp
++OTEL_LOGS_EXPORTER=otlp
++OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
++OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
++OTEL_EXPORTER_OTLP_INSECURE=true
+\ No newline at end of file
+diff --git a/flights/requirements.txt b/flights/requirements.txt
+index 3d86a10..96623d1 100644
+--- a/flights/requirements.txt
++++ b/flights/requirements.txt
+@@ -1,3 +1,4 @@
+ Flask==3.0.3
+ flasgger==0.9.7.1
+ Flask-Cors==5.0.0
++opentelemetry-distro[otlp]
+\ No newline at end of file
+diff --git a/frontend/package-lock.json b/frontend/package-lock.json
+index f76f8cd..28a2924 100644
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -12,7 +12,7 @@
+         "cra-template": "1.2.0",
+         "react": "^18.3.1",
+         "react-dom": "^18.3.1",
+-        "react-router-dom": "^7.0.2",
++        "react-router-dom": "^6.29.0",
+         "react-scripts": "5.0.1",
+         "web-vitals": "^4.2.4"
+       }
+@@ -3083,6 +3083,15 @@
+         }
+       }
+     },
++    "node_modules/@remix-run/router": {
++      "version": "1.23.0",
++      "resolved": "https://registry.npmjs.org/@remix-run/router/-/router-1.23.0.tgz",
++      "integrity": "sha512-O3rHJzAQKamUz1fvE0Qaw0xSFqsA/yafi2iqeE0pvdFtCO1viYx8QL6f3Ln/aCCTLxs68SLf0KPM9eSeM8yBnA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=14.0.0"
++      }
++    },
+     "node_modules/@rollup/plugin-babel": {
+       "version": "5.3.1",
+       "resolved": "https://registry.npmjs.org/@rollup/plugin-babel/-/plugin-babel-5.3.1.tgz",
+@@ -3528,12 +3537,6 @@
+         "@types/node": "*"
+       }
+     },
+-    "node_modules/@types/cookie": {
+-      "version": "0.6.0",
+-      "resolved": "https://registry.npmjs.org/@types/cookie/-/cookie-0.6.0.tgz",
+-      "integrity": "sha512-4Kh9a6B2bQciAhf7FSuMRRkUWecJgJu9nPnx3yzpsfXX/c50REIqpHY4C82bXP90qrLtXtkDxTZosYO3UpOwlA==",
+-      "license": "MIT"
+-    },
+     "node_modules/@types/eslint": {
+       "version": "8.56.12",
+       "resolved": "https://registry.npmjs.org/@types/eslint/-/eslint-8.56.12.tgz",
+@@ -13680,52 +13683,35 @@
+       }
+     },
+     "node_modules/react-router": {
+-      "version": "7.0.2",
+-      "resolved": "https://registry.npmjs.org/react-router/-/react-router-7.0.2.tgz",
+-      "integrity": "sha512-m5AcPfTRUcjwmhBzOJGEl6Y7+Crqyju0+TgTQxoS4SO+BkWbhOrcfZNq6wSWdl2BBbJbsAoBUb8ZacOFT+/JlA==",
++      "version": "6.30.1",
++      "resolved": "https://registry.npmjs.org/react-router/-/react-router-6.30.1.tgz",
++      "integrity": "sha512-X1m21aEmxGXqENEPG3T6u0Th7g0aS4ZmoNynhbs+Cn+q+QGTLt+d5IQ2bHAXKzKcxGJjxACpVbnYQSCRcfxHlQ==",
+       "license": "MIT",
+       "dependencies": {
+-        "@types/cookie": "^0.6.0",
+-        "cookie": "^1.0.1",
+-        "set-cookie-parser": "^2.6.0",
+-        "turbo-stream": "2.4.0"
++        "@remix-run/router": "1.23.0"
+       },
+       "engines": {
+-        "node": ">=20.0.0"
++        "node": ">=14.0.0"
+       },
+       "peerDependencies": {
+-        "react": ">=18",
+-        "react-dom": ">=18"
+-      },
+-      "peerDependenciesMeta": {
+-        "react-dom": {
+-          "optional": true
+-        }
++        "react": ">=16.8"
+       }
+     },
+     "node_modules/react-router-dom": {
+-      "version": "7.0.2",
+-      "resolved": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.0.2.tgz",
+-      "integrity": "sha512-VJOQ+CDWFDGaWdrG12Nl+d7yHtLaurNgAQZVgaIy7/Xd+DojgmYLosFfZdGz1wpxmjJIAkAMVTKWcvkx1oggAw==",
++      "version": "6.30.1",
++      "resolved": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-6.30.1.tgz",
++      "integrity": "sha512-llKsgOkZdbPU1Eg3zK8lCn+sjD9wMRZZPuzmdWWX5SUs8OFkN5HnFVC0u5KMeMaC9aoancFI/KoLuKPqN+hxHw==",
+       "license": "MIT",
+       "dependencies": {
+-        "react-router": "7.0.2"
++        "@remix-run/router": "1.23.0",
++        "react-router": "6.30.1"
+       },
+       "engines": {
+-        "node": ">=20.0.0"
++        "node": ">=14.0.0"
+       },
+       "peerDependencies": {
+-        "react": ">=18",
+-        "react-dom": ">=18"
+-      }
+-    },
+-    "node_modules/react-router/node_modules/cookie": {
+-      "version": "1.0.2",
+-      "resolved": "https://registry.npmjs.org/cookie/-/cookie-1.0.2.tgz",
+-      "integrity": "sha512-9Kr/j4O16ISv8zBBhJoi4bXOYNTkFLOqSL3UDB0njXxCXNezjeyVrJyGOWtgfs/q2km1gwBcfH8q1yEGoMYunA==",
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=18"
++        "react": ">=16.8",
++        "react-dom": ">=16.8"
+       }
+     },
+     "node_modules/react-scripts": {
+@@ -14599,12 +14585,6 @@
+         "node": ">= 0.8.0"
+       }
+     },
+-    "node_modules/set-cookie-parser": {
+-      "version": "2.7.1",
+-      "resolved": "https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.1.tgz",
+-      "integrity": "sha512-IOc8uWeOZgnb3ptbCURJWNjWUPcO3ZnTTdzsurqERrP6nPyv+paC55vJM0LpOlT2ne+Ix+9+CRG1MNLlyZ4GjQ==",
+-      "license": "MIT"
+-    },
+     "node_modules/set-function-length": {
+       "version": "1.2.2",
+       "resolved": "https://registry.npmjs.org/set-function-length/-/set-function-length-1.2.2.tgz",
+@@ -15913,12 +15893,6 @@
+       "integrity": "sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==",
+       "license": "0BSD"
+     },
+-    "node_modules/turbo-stream": {
+-      "version": "2.4.0",
+-      "resolved": "https://registry.npmjs.org/turbo-stream/-/turbo-stream-2.4.0.tgz",
+-      "integrity": "sha512-FHncC10WpBd2eOmGwpmQsWLDoK4cqsA/UT/GqNoaKOQnT8uzhtCbg3EoUDMvqpOSAI0S26mr0rkjzbOO6S3v1g==",
+-      "license": "ISC"
+-    },
+     "node_modules/type-check": {
+       "version": "0.4.0",
+       "resolved": "https://registry.npmjs.org/type-check/-/type-check-0.4.0.tgz",
